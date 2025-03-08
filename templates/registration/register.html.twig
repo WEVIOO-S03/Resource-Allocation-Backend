@@ -1,0 +1,36 @@
+{# templates/registration/register.html.twig #}
+{% extends 'base.html.twig' %}
+
+{% block title %}Inscription{% endblock %}
+
+{% block body %}
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h1 class="text-center">Inscription</h1>
+                    </div>
+                    <div class="card-body">
+                        {% for flash_error in app.flashes('verify_email_error') %}
+                            <div class="alert alert-danger" role="alert">{{ flash_error }}</div>
+                        {% endfor %}
+
+                        {{ form_start(registrationForm) }}
+                            {{ form_row(registrationForm.firstName) }}
+                            {{ form_row(registrationForm.lastName) }}
+                            {{ form_row(registrationForm.email) }}
+                            {{ form_row(registrationForm.password) }}
+                            
+                            <button type="submit" class="btn btn-primary btn-block mt-3">S'inscrire</button>
+                        {{ form_end(registrationForm) }}
+                        
+                        <div class="mt-3 text-center">
+                            <a href="{{ path('app_login') }}">Déjà inscrit ? Connectez-vous</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
