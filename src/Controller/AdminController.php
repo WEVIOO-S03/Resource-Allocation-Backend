@@ -33,12 +33,13 @@ class AdminController extends AbstractController
                 'status' => $user->getStatus()->value,
                 'isActive' => $user->isActive(),
                 'projects' => array_map(fn($access) => [
-                'projectId' => $access->getProject()->getId(),
-                'canEdit' => $access->getCanEdit(),
-                'canConsult' => $access->getCanConsult()
-            ], $user->getProjectAccess()->toArray()),
-
+                    'projectId' => $access->getProject()->getId(),
+                    'canEdit' => $access->getCanEdit(),
+                    'canConsult' => $access->getCanConsult()
+                ], $user->getProjectAccess()->toArray()),
                 'createdAt' => $user->getCreatedAt()->format('Y-m-d H:i:s'),
+                'position' => $user->getPosition(),
+                'skills' => $user->getSkills()
             ];
         }
         
@@ -62,118 +63,142 @@ class AdminController extends AbstractController
             'status' => $user->getStatus()->value,
             'isActive' => $user->isActive(),
             'projects' => array_map(fn($access) => [
-            'projectId' => $access->getProject()->getId(),
-            'canEdit' => $access->getCanEdit(),
-            'canConsult' => $access->getCanConsult()
-        ], $user->getProjectAccess()->toArray()),
-
+                'projectId' => $access->getProject()->getId(),
+                'canEdit' => $access->getCanEdit(),
+                'canConsult' => $access->getCanConsult()
+            ], $user->getProjectAccess()->toArray()),
             'createdAt' => $user->getCreatedAt()->format('Y-m-d H:i:s'),
+            'position' => $user->getPosition(),
+            'skills' => $user->getSkills(),
         ]);
     }
     
-    #[Route('/users/{id}/approve', name: 'admin_approve_user', methods: ['PATCH'])]
-    public function approveUser(
-        int $id, 
-        Request $request, 
-        EntityManagerInterface $entityManager
-    ): JsonResponse {
+    #[Route('/users/{id}/update-access', name: 'admin_update_user_access', methods: ['PATCH'])]
+        public function updateUserAccess(
+            int $id,
+            Request $request,
+            EntityManagerInterface $entityManager
+        ): JsonResponse {
+            $user = $entityManager->getRepository(User::class)->find($id);
+            
+            if (!$user) {
+                return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
+            }
+            
+            $data = json_decode($request->getContent(), true);
+            
+            if (isset($data['position'])) {
+                $user->setPosition($data['position']);
+            }
+            
+            if (isset($data['skills']) && is_array($data['skills'])) {
+                $user->setSkills($data['skills']);
+            }
+            
+            if (isset($data['projects']) && is_array($data['projects'])) {
+                $hasAccess = false;
+                
+                $existingAccess = [];
+                foreach ($user->getProjectAccess() as $access) {
+                    $existingAccess[$access->getProject()->getId()] = $access;
+                }
+                
+                $projectsInRequest = [];
+                
+                foreach ($data['projects'] as $projectData) {
+                    $projectId = $projectData['id'] ?? $projectData['projectId'] ?? null;
+                    if (!$projectId) continue;
+                    
+                    $projectsInRequest[] = $projectId;
+                    
+                    $canConsult = $projectData['canConsult'] ?? false;
+                    $canEdit = $projectData['canEdit'] ?? false;
+                    
+                    if ($canConsult || $canEdit) {
+                        $hasAccess = true;
+                        $project = $entityManager->getRepository(Project::class)->find($projectId);
+                        if ($project) {
+                            $user->addProjectAccess($project, $canConsult, $canEdit);
+                        }
+                    } else if (isset($existingAccess[$projectId])) {
+                        $access = $existingAccess[$projectId];
+                        $user->getProjectAccess()->removeElement($access);
+                        $entityManager->remove($access);
+                    }
+                }
+                
+                foreach ($existingAccess as $projectId => $access) {
+                    if (!in_array($projectId, $projectsInRequest)) {
+                        $user->getProjectAccess()->removeElement($access);
+                        $entityManager->remove($access);
+                    }
+                }
+                
+                if ($hasAccess) {
+                    $user->setStatus(UserStatus::APPROVED);
+                    $user->setIsActive(true);
+                } else {
+                    $user->setStatus(UserStatus::PENDING);
+                    $user->setIsActive(false);
+                }
+            }
+            
+            try {
+                $entityManager->persist($user);
+                $entityManager->flush();
+                $entityManager->clear(UserProjectAccess::class);
+                
+                $refreshedUser = $entityManager->getRepository(User::class)->find($id);
+                
+                return $this->json([
+                    'message' => 'User updated successfully',
+                    'user' => [
+                        'id' => $refreshedUser->getId(),
+                        'email' => $refreshedUser->getEmail(),
+                        'position' => $refreshedUser->getPosition(),
+                        'skills' => $refreshedUser->getSkills(),
+                        'status' => $refreshedUser->getStatus()->value,
+                        'projects' => array_map(function($access) {
+                            return [
+                                'id' => $access->getProject()->getId(),
+                                'code' => $access->getProject()->getCode(),
+                                'name' => $access->getProject()->getName(),
+                                'canConsult' => $access->getCanConsult(),
+                                'canEdit' => $access->getCanEdit()
+                            ];
+                        }, $refreshedUser->getProjectAccess()->toArray())
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                return $this->json([
+                    'error' => 'Failed to update user: ' . $e->getMessage()
+                ], Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+}
+
+
+
+    #[Route('/users/{id}', name: 'admin_delete_user', methods: ['DELETE'])]
+    public function deleteUser(int $id, EntityManagerInterface $entityManager): JsonResponse
+    {
         $user = $entityManager->getRepository(User::class)->find($id);
         
         if (!$user) {
             return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
         }
         
-        $data = json_decode($request->getContent(), true);
-        
-        if (isset($data['position'])) {
-            $user->setPosition($data['position']);
+        $currentUser = $this->getUser();
+        if ($currentUser && $currentUser->getId() === $user->getId()) {
+            return $this->json(['error' => 'You cannot delete your own account'], Response::HTTP_FORBIDDEN);
         }
         
-        if (isset($data['skills']) && is_array($data['skills'])) {
-            $user->setSkills($data['skills']);
+        foreach ($user->getProjectAccess() as $access) {
+            $user->removeProjectAccess($access->getProject());
         }
         
-        if (isset($data['projects']) && is_array($data['projects'])) {
-            $currentProjects = [];
-            foreach ($user->getProjectAccess() as $access) {
-                $currentProjects[$access->getProject()->getId()] = $access->getProject();
-            }
-            
-            $assignedProjectIds = [];
-            foreach ($data['projects'] as $projectAccess) {
-                $projectId = $projectAccess['id'];
-                $assignedProjectIds[] = $projectId;
-                
-                $canConsult = $projectAccess['canConsult'] ?? false;
-                $canEdit = $projectAccess['canEdit'] ?? false;
-                
-                $project = $entityManager->getRepository(Project::class)->find($projectId);
-                if ($project) {
-                    $user->addProjectAccess($project, $canConsult, $canEdit);
-                }
-            }
-            
-            foreach ($currentProjects as $projectId => $project) {
-                if (!in_array($projectId, $assignedProjectIds)) {
-                    $user->removeProjectAccess($project);
-                }
-            }
-        }
-        
-        $user->setStatus(UserStatus::APPROVED);
-        $user->setIsActive(true);
-        
+        $entityManager->remove($user);
         $entityManager->flush();
         
-        return $this->json([
-            'message' => 'User approved successfully',
-            'user' => [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'position' => $user->getPosition(),
-                'skills' => $user->getSkills(),
-                'status' => $user->getStatus()->value,
-                'projects' => array_map(function($access) {
-                    return [
-                        'id' => $access->getProject()->getId(),
-                        'code' => $access->getProject()->getCode(),
-                        'name' => $access->getProject()->getName(),
-                        'canConsult' => $access->getCanConsult(),
-                        'canEdit' => $access->getCanEdit()
-                    ];
-                }, $user->getProjectAccess()->toArray())
-            ]
-        ]);
+        return $this->json(['message' => 'User deleted successfully']);
     }
-    
-    #[Route('/users/{id}/update-rights', name: 'admin_update_user_rights', methods: ['PATCH'])]
-public function updateUserRights(int $id, Request $request, EntityManagerInterface $entityManager): JsonResponse
-{
-    $user = $entityManager->getRepository(User::class)->find($id);
-    
-    if (!$user) {
-        return $this->json(['error' => 'User not found'], Response::HTTP_NOT_FOUND);
-    }
-    
-    $data = json_decode($request->getContent(), true);
-    
-    if (isset($data['projectId'])) {
-        $project = $entityManager->getRepository(Project::class)->find($data['projectId']);
-        
-        if (!$project) {
-            return $this->json(['error' => 'Project not found'], Response::HTTP_NOT_FOUND);
-        }
-        
-        $canConsult = $data['canConsult'] ?? false;
-        $canEdit = $data['canEdit'] ?? false;
-        
-        $user->addProjectAccess($project, $canConsult, $canEdit);
-    }
-    
-    $entityManager->flush();
-    
-    return $this->json([
-        'message' => 'User rights updated successfully'
-    ]);
-}
 }

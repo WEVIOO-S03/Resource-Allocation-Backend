@@ -84,7 +84,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     public function getRoles(): array
 {
-    $roles = $this->roles;
+    $roles = $this->roles ?? []; 
     $roles[] = 'ROLE_USER';
 
     foreach ($this->projectAccess as $access) {
@@ -244,15 +244,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     public function removeProjectAccess(Project $project): self
-    {
-        foreach ($this->projectAccess as $access) {
-            if ($access->getProject()->getId() === $project->getId()) {
-                $this->projectAccess->removeElement($access);
-                break;
-            }
+{
+    foreach ($this->projectAccess as $access) {
+        if ($access->getProject()->getId() === $project->getId()) {
+            $this->projectAccess->removeElement($access);
+            break;
         }
-        return $this;
     }
+    return $this;
+}
 
     public function getAccessibleProjects(): Collection
     {
