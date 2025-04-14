@@ -13,8 +13,8 @@ This repository contains the Symfony backend application with an admin panel gen
 
 1. **Clone the repository**
    ```bash
-   git clone [repository-url]
-   cd [repository-name]
+   git clone https://github.com/WEVIOO-S03/Resource-Allocation-Backend.git
+   cd Resource-Allocation-Backend
    ```
 
 2. **Install dependencies**
