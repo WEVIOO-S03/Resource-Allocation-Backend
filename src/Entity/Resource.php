@@ -117,14 +117,27 @@ class Resource
         return $this;
     }
 
+    /**
+     * @deprecated Use getOccupationRateForDate() instead
+     */
     public function getOccupationRate(): ?float
     {
-        return $this->occupationRate;
+        $today = new \DateTime();
+        return $this->getOccupationRateForDate($today);
     }
 
+    /**
+     * @deprecated Use addOccupationRecord() instead
+     */
     public function setOccupationRate(float $occupationRate): self
     {
-        $this->occupationRate = $occupationRate;
+        $today = new \DateTime();
+        $record = new OccupationRecord();
+        $record->setResource($this);
+        $record->setDate($today);
+        $record->setOccupationRate((int)$occupationRate);
+        $this->addOccupationRecord($record);
+        
         $this->setAvailabilityRate(100 - $occupationRate);
         $this->updatedAt = new \DateTimeImmutable();
         return $this;
@@ -248,6 +261,31 @@ public function getOccupationRateForDate(\DateTimeInterface $date): int
         }
     }
     
-    return $this->occupationRate; 
+    return 0;
+}
+
+public function getOccupationRecordsForDateRange(\DateTimeInterface $startDate, \DateTimeInterface $endDate): Collection
+{
+    return $this->occupationRecords->filter(
+        function($record) use ($startDate, $endDate) {
+            $recordDate = $record->getDate();
+            return $recordDate >= $startDate && $recordDate <= $endDate;
+        }
+    );
+}
+
+public function getAverageOccupationRateForDateRange(\DateTimeInterface $startDate, \DateTimeInterface $endDate): float
+{
+    $records = $this->getOccupationRecordsForDateRange($startDate, $endDate);
+    if ($records->isEmpty()) {
+        return 0.0;
+    }
+
+    $total = 0;
+    foreach ($records as $record) {
+        $total += $record->getOccupationRate();
+    }
+
+    return $total / $records->count();
 }
 }

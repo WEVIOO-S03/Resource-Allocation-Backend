@@ -6,6 +6,7 @@ use App\Entity\Resource;
 use App\Entity\User;
 use App\Entity\Project;
 use App\Entity\Pole;
+use App\Entity\OccupationRecord;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Common\DataFixtures\DependentFixtureInterface;
 use Doctrine\Persistence\ObjectManager;
@@ -79,8 +80,16 @@ class ResourceFixtures extends Fixture implements DependentFixtureInterface
                 $resource->setPole($pole);
                 $resource->setSkills($resourceData['skills']);
                 $resource->setPosition($resourceData['position']);
-                $resource->setOccupationRate($resourceData['occupationRate']);
                 $resource->setProjectManager($user);
+                
+                $occupationRecord = new OccupationRecord();
+                $occupationRecord->setResource($resource);
+                $occupationRecord->setDate(new \DateTime());
+                $occupationRecord->setOccupationRate($resourceData['occupationRate']);
+                $occupationRecord->setUpdatedBy($user);
+                $occupationRecord->setUpdatedAt(new \DateTime());
+                
+                $resource->addOccupationRecord($occupationRecord);
                 
                 $manager->persist($resource);
                 echo "Created resource: " . $resourceData['fullName'] . "\n";

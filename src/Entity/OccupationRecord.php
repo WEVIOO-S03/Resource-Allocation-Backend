@@ -27,6 +27,7 @@ class OccupationRecord
     private ?Project $project = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(nullable: true)]
     private ?User $updatedBy = null;
 
     #[ORM\Column(type: 'datetime')]

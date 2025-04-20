@@ -13,6 +13,18 @@ class ResourceRepository extends ServiceEntityRepository
         parent::__construct($registry, Resource::class);
     }
 
+    public function findByProject(int $projectId)
+    {
+        return $this->createQueryBuilder('r')
+            ->select('r, p')
+            ->leftJoin('r.pole', 'p')
+            ->leftJoin('r.projects', 'pr')
+            ->where('pr.id = :projectId')
+            ->setParameter('projectId', $projectId)
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findAllGroupedByPole(\DateTimeInterface $date = null)
     {
         $date = $date ?: new \DateTime();
