@@ -80,4 +80,67 @@ class ResourceRepository extends ServiceEntityRepository
         
         return $result;
     }
+
+    public function findAllWithOccupationRates(\DateTime $date = null)
+{
+    if (!$date) {
+        $date = new \DateTime();
+    }
+    
+    $resources = $this->findAll();
+    $resourceIds = array_map(function($resource) {
+        return $resource->getId();
+    }, $resources);
+    
+    $qb = $this->getEntityManager()->createQueryBuilder();
+    $occupationRecords = $qb->select('o, p, r')
+        ->from('App\Entity\OccupationRecord', 'o')
+        ->join('o.resource', 'r')
+        ->leftJoin('o.project', 'p')
+        ->where('o.resource IN (:resourceIds)')
+        ->andWhere('o.date = :date')
+        ->setParameter('resourceIds', $resourceIds)
+        ->setParameter('date', $date->format('Y-m-d'))
+        ->getQuery()
+        ->getResult();
+    
+    $resourceOccupations = [];
+    foreach ($occupationRecords as $record) {
+        $resourceId = $record->getResource()->getId();
+        if (!isset($resourceOccupations[$resourceId])) {
+            $resourceOccupations[$resourceId] = [
+                'total' => 0,
+                'projects' => []
+            ];
+        }
+        
+        $project = $record->getProject();
+        if (!$project) {
+            continue;
+        }
+        
+        $rate = $record->getOccupationRate();
+        $resourceOccupations[$resourceId]['total'] += $rate;
+        $resourceOccupations[$resourceId]['projects'][] = [
+            'projectId' => $project->getId(),
+            'projectName' => $project->getName(),
+            'rate' => $rate
+        ];
+    }
+    
+    foreach ($resources as $resource) {
+        $resourceId = $resource->getId();
+        if (isset($resourceOccupations[$resourceId])) {
+            $rawTotal = $resourceOccupations[$resourceId]['total'];
+            $resource->setDirectOccupationRate(min(100, $rawTotal));
+            
+            $resource->setProjectOccupations($resourceOccupations[$resourceId]['projects']);
+        } else {
+            $resource->setDirectOccupationRate(0);
+            $resource->setProjectOccupations([]);
+        }
+    }
+    
+    return $resources;
+}
 }
