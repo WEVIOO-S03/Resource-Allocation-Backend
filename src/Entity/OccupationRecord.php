@@ -18,7 +18,10 @@ class OccupationRecord
     private ?Resource $resource = null;
 
     #[ORM\Column(type: 'date')]
-    private ?\DateTimeInterface $date = null;
+    private ?\DateTimeInterface $weekStart = null;
+    
+    #[ORM\Column(type: 'date')]
+    private ?\DateTimeInterface $weekEnd = null;
 
     #[ORM\Column(type: 'integer')]
     private int $occupationRate = 0;
@@ -53,16 +56,63 @@ class OccupationRecord
         $this->resource = $resource;
         return $this;
     }
-
+    
     public function getDate(): ?\DateTimeInterface
     {
-        return $this->date;
+        return $this->weekStart;
     }
 
     public function setDate(\DateTimeInterface $date): self
     {
-        $this->date = $date;
+        $this->weekStart = $this->getWeekStartFromDate($date);
+        $this->weekEnd = $this->getWeekEndFromDate($date);
         return $this;
+    }
+    
+    public function getWeekStart(): ?\DateTimeInterface
+    {
+        return $this->weekStart;
+    }
+    
+    public function setWeekStart(\DateTimeInterface $date): self
+    {
+        $this->weekStart = $this->getWeekStartFromDate($date);
+        $this->weekEnd = $this->getWeekEndFromDate($date);
+        return $this;
+    }
+    
+    public function getWeekEnd(): ?\DateTimeInterface
+    {
+        return $this->weekEnd;
+    }
+    
+    public function setWeekEnd(\DateTimeInterface $date): self
+    {
+        $this->weekEnd = $date;
+        return $this;
+    }
+    
+    public function getWeekStartFromDate(\DateTimeInterface $date): \DateTimeInterface
+    {
+        $weekStart = clone $date;
+        $weekStart->modify('monday this week');
+        return $weekStart;
+    }
+    
+    public function getWeekEndFromDate(\DateTimeInterface $date): \DateTimeInterface
+    {
+        $weekEnd = clone $date;
+        $weekEnd->modify('sunday this week');
+        return $weekEnd;
+    }
+    
+    public function isDateInWeek(\DateTimeInterface $date): bool
+    {
+        $dateTimestamp = $date->getTimestamp();
+        $weekStartTimestamp = $this->weekStart->getTimestamp();
+        $weekEndTimestamp = $this->weekEnd->getTimestamp();
+        
+        return ($dateTimestamp >= $weekStartTimestamp && $dateTimestamp <= $weekEndTimestamp);
     }
 
     public function getOccupationRate(): int

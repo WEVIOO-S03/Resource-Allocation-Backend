@@ -87,6 +87,9 @@ class ResourceRepository extends ServiceEntityRepository
         $date = new \DateTime();
     }
     
+    $weekStart = (clone $date)->modify('monday this week');
+    $weekEnd = (clone $weekStart)->modify('+6 days'); 
+    
     $resources = $this->findAll();
     $resourceIds = array_map(function($resource) {
         return $resource->getId();
@@ -98,9 +101,11 @@ class ResourceRepository extends ServiceEntityRepository
         ->join('o.resource', 'r')
         ->leftJoin('o.project', 'p')
         ->where('o.resource IN (:resourceIds)')
-        ->andWhere('o.date = :date')
+        ->andWhere('o.weekStart = :weekStart')
+        ->andWhere('o.weekEnd = :weekEnd')
         ->setParameter('resourceIds', $resourceIds)
-        ->setParameter('date', $date->format('Y-m-d'))
+        ->setParameter('weekStart', $weekStart)
+        ->setParameter('weekEnd', $weekEnd)
         ->getQuery()
         ->getResult();
     
@@ -142,5 +147,4 @@ class ResourceRepository extends ServiceEntityRepository
     }
     
     return $resources;
-}
-}
+} }
