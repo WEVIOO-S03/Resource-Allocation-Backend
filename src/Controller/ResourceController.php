@@ -163,18 +163,23 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
             public function show(Resource $resource, EntityManagerInterface $em, Request $request): JsonResponse
             {
                 $date = $request->query->get('date') ? new \DateTime($request->query->get('date')) : new \DateTime();
-            
+                
+                $weekStart = (clone $date)->modify('monday this week');
+                $weekEnd = (clone $weekStart)->modify('+6 days');
+                
                 $qb = $em->createQueryBuilder();
                 $occupationRecords = $qb->select('o, p')
                     ->from('App\Entity\OccupationRecord', 'o')
                     ->leftJoin('o.project', 'p')
                     ->where('o.resource = :resource')
-                    ->andWhere('o.date = :date')
+                    ->andWhere('o.weekStart = :weekStart')
+                    ->andWhere('o.weekEnd = :weekEnd')
                     ->setParameter('resource', $resource)
-                    ->setParameter('date', $date->format('Y-m-d'))
+                    ->setParameter('weekStart', $weekStart)
+                    ->setParameter('weekEnd', $weekEnd)
                     ->getQuery()
                     ->getResult();
-            
+                
                 $projectOccupations = [];
                 $rawTotal = 0;
                 foreach ($occupationRecords as $record) {
@@ -190,15 +195,15 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
                         'rate' => $rate
                     ];
                 }
-            
+                
                 $totalOccupation = min(100, $rawTotal);
                 $availability = 100 - $totalOccupation;
-            
+                
                 $warning = null;
                 if ($rawTotal > 100) {
                     $warning = "Total project allocation exceeds 100% ($rawTotal%)";
                 }
-            
+                
                 $data = [
                     'id' => $resource->getId(),
                     'fullName' => $resource->getFullName(),
@@ -222,13 +227,15 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
                     'projects' => $resource->getProjects()->map(fn($p) => [
                         'id' => $p->getId(),
                         'name' => $p->getName()
-                    ])->toArray()
+                    ])->toArray(),
+                    'weekStart' => $weekStart->format('Y-m-d'),
+                    'weekEnd' => $weekEnd->format('Y-m-d')
                 ];
-            
+                
                 if ($warning) {
                     $data['warning'] = $warning;
                 }
-            
+                
                 return $this->json($data);
             }
     
