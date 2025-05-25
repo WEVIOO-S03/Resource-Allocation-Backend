@@ -25,12 +25,6 @@ class Resource
     #[ORM\Column(type: 'json')]
     private array $skills = [];
 
-    #[ORM\Column(type: 'float')]
-    private ?float $occupationRate = 0.0; 
-
-    #[ORM\Column(type: 'float')]
-    private ?float $availabilityRate = 100.0; 
-
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $position = null;
 
@@ -54,11 +48,31 @@ class Resource
     #[ORM\OneToMany(targetEntity: OccupationRecord::class, mappedBy: 'resource', cascade: ['persist', 'remove'])]
     private Collection $occupationRecords;
 
+    private array $projectOccupations = [];
+    private float $directOccupationRate = 0;
+
+    private int $occupationRate = 0;
+
     public function __construct()
     {
         $this->projects = new ArrayCollection();
         $this->createdAt = new \DateTimeImmutable();
         $this->occupationRecords = new ArrayCollection();
+    }
+
+    public function getOccupationRate(): float
+    {
+        return $this->directOccupationRate;
+    }
+
+    public function setProjectOccupations(array $projectOccupations): void
+    {
+        $this->projectOccupations = $projectOccupations;
+    }
+
+    public function getProjectOccupations(): array
+    {
+        return $this->projectOccupations;
     }
 
     public function getId(): ?int
@@ -117,40 +131,93 @@ class Resource
         return $this;
     }
 
-    /**
-     * @deprecated Use getOccupationRateForDate() instead
-     */
-    public function getOccupationRate(): ?float
+    public function getDailyOccupation(\DateTimeInterface $date): array
     {
-        $today = new \DateTime();
-        return $this->getOccupationRateForDate($today);
+        return $this->getWeeklyOccupation($date);
+    }
+    
+    public function getWeeklyOccupation(\DateTimeInterface $date): array
+    {
+        $result = [
+            'total' => 0,
+            'byProject' => []
+        ];
+    
+        $weekStart = clone $date;
+        $weekStart->modify('monday this week');
+        $weekEnd = clone $date;
+        $weekEnd->modify('sunday this week');
+        
+        foreach ($this->occupationRecords as $record) {
+            $recordWeekStart = $record->getWeekStart();
+            if (!$recordWeekStart) continue;
+            
+            if ($recordWeekStart->format('Y-m-d') === $weekStart->format('Y-m-d')) {
+                $project = $record->getProject();
+                if (!$project) {
+                    continue;
+                }
+    
+                $result['total'] += $record->getOccupationRate();
+                $result['byProject'][$project->getId()] = [
+                    'project' => $project,
+                    'rate' => $record->getOccupationRate()
+                ];
+            }
+        }
+    
+        return $result;
     }
 
-    /**
-     * @deprecated Use addOccupationRecord() instead
-     */
     public function setOccupationRate(float $occupationRate): self
     {
         $today = new \DateTime();
-        $record = new OccupationRecord();
-        $record->setResource($this);
-        $record->setDate($today);
-        $record->setOccupationRate((int)$occupationRate);
-        $this->addOccupationRecord($record);
+        $this->addWeeklyOccupationRecord($today, $occupationRate);
         
-        $this->setAvailabilityRate(100 - $occupationRate);
+        return $this;
+    }
+    
+    public function addWeeklyOccupationRecord(\DateTimeInterface $date, float $occupationRate, ?Project $project = null): self
+    {
+        $weekStart = clone $date;
+        $weekStart->modify('monday this week');
+        
+        $weekEnd = clone $date;
+        $weekEnd->modify('sunday this week');
+        
+        $existingRecord = null;
+        foreach ($this->occupationRecords as $record) {
+            if ($record->getWeekStart() && 
+                $record->getWeekStart()->format('Y-m-d') === $weekStart->format('Y-m-d') &&
+                (!$project || ($record->getProject() && $record->getProject()->getId() === $project->getId()))) {
+                $existingRecord = $record;
+                break;
+            }
+        }
+        
+        if ($existingRecord) {
+            $existingRecord->setOccupationRate((int)$occupationRate);
+            $existingRecord->setUpdatedAt(new \DateTime());
+        } else {
+            $record = new OccupationRecord();
+            $record->setResource($this);
+            $record->setWeekStart($weekStart);
+            $record->setWeekEnd($weekEnd);
+            $record->setOccupationRate((int)$occupationRate);
+            
+            if ($project) {
+                $record->setProject($project);
+            }
+            
+            $this->addOccupationRecord($record);
+        }
+        
         $this->updatedAt = new \DateTimeImmutable();
         return $this;
     }
 
-    public function getAvailabilityRate(): ?float
-    {
-        return $this->availabilityRate;
-    }
-
     public function setAvailabilityRate(float $availabilityRate): self
     {
-        $this->availabilityRate = $availabilityRate;
         return $this;
     }
 
@@ -195,9 +262,9 @@ class Resource
         return $this;
     }
 
-    public function getAvatar(): ?string
+    public function getAvatar(): string
     {
-        return $this->avatar;
+        return $this->avatar ?? 'https://i.pravatar.cc/150?img=' . $this->getId();
     }
 
     public function setAvatar(?string $avatar): self
@@ -226,66 +293,66 @@ class Resource
     {
         $this->updatedAt = $updatedAt;
         return $this;
-    }
+    }  
     public function getOccupationRecords(): Collection
-{
-    return $this->occupationRecords;
-}
-
-public function addOccupationRecord(OccupationRecord $record): self
-{
-    if (!$this->occupationRecords->contains($record)) {
-        $this->occupationRecords->add($record);
-        $record->setResource($this);
+    {
+        return $this->occupationRecords;
     }
-    return $this;
-}
 
-public function removeOccupationRecord(OccupationRecord $record): self
-{
-    if ($this->occupationRecords->removeElement($record)) {
-        if ($record->getResource() === $this) {
-            $record->setResource(null);
+    public function addOccupationRecord(OccupationRecord $record): self
+    {
+        if (!$this->occupationRecords->contains($record)) {
+            $this->occupationRecords->add($record);
+            $record->setResource($this);
         }
+        return $this;
     }
-    return $this;
-}
 
-public function getOccupationRateForDate(\DateTimeInterface $date): int
-{
-    $dateString = $date->format('Y-m-d');
-    
-    foreach ($this->occupationRecords as $record) {
-        if ($record->getDate()->format('Y-m-d') === $dateString) {
-            return $record->getOccupationRate();
+    public function removeOccupationRecord(OccupationRecord $record): self
+    {
+        if ($this->occupationRecords->removeElement($record)) {
+            if ($record->getResource() === $this) {
+                $record->setResource(null);
+            }
         }
+        return $this;
     }
     
-    return 0;
-}
-
-public function getOccupationRecordsForDateRange(\DateTimeInterface $startDate, \DateTimeInterface $endDate): Collection
-{
-    return $this->occupationRecords->filter(
-        function($record) use ($startDate, $endDate) {
-            $recordDate = $record->getDate();
-            return $recordDate >= $startDate && $recordDate <= $endDate;
+    public function getOccupationRateForDate(\DateTimeInterface $date = null): int
+    {
+        return $this->getOccupationRateForWeek($date);
+    }
+    
+    public function getOccupationRateForWeek(\DateTimeInterface $date = null, ?Project $project = null): int
+    {
+        if (!$date) {
+            $date = new \DateTime();
         }
-    );
-}
-
-public function getAverageOccupationRateForDateRange(\DateTimeInterface $startDate, \DateTimeInterface $endDate): float
-{
-    $records = $this->getOccupationRecordsForDateRange($startDate, $endDate);
-    if ($records->isEmpty()) {
-        return 0.0;
+        
+        $weekStart = clone $date;
+        $weekStart->modify('monday this week');
+        $weekStartString = $weekStart->format('Y-m-d');
+        
+        $totalRate = 0;
+        
+        foreach ($this->occupationRecords as $record) {
+            $recordWeekStart = $record->getWeekStart();
+            if (!$recordWeekStart) continue;
+            
+            if ($recordWeekStart->format('Y-m-d') === $weekStartString &&
+                (!$project || ($record->getProject() && $record->getProject()->getId() === $project->getId()))) {
+                if ($project) {
+                    return $record->getOccupationRate(); 
+                }
+                $totalRate += $record->getOccupationRate();
+            }
+        }
+        
+        return min(100, $totalRate);
     }
-
-    $total = 0;
-    foreach ($records as $record) {
-        $total += $record->getOccupationRate();
+   
+    public function setDirectOccupationRate(float $rate): void
+    {
+        $this->directOccupationRate = $rate;
     }
-
-    return $total / $records->count();
-}
 }
