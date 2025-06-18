@@ -27,9 +27,13 @@ class Project
     #[ORM\OneToMany(targetEntity: UserProjectAccess::class, mappedBy: 'project', cascade: ['persist', 'remove'])]
     private Collection $userAccess;
 
+    #[ORM\ManyToMany(targetEntity: Resource::class, mappedBy: 'projects')]
+    private Collection $resources;
+
     public function __construct()
     {
         $this->userAccess = new ArrayCollection();
+        $this->resources = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -82,5 +86,28 @@ class Project
             $users->add($access->getUser());
         }
         return $users;
+    }
+
+    public function getResources(): Collection
+    {
+        return $this->resources;
+    }
+    
+    public function addResource(Resource $resource): self
+    {
+        if (!$this->resources->contains($resource)) {
+            $this->resources->add($resource);
+            $resource->addProject($this);
+        }
+        return $this;
+    }
+    
+    public function removeResource(Resource $resource): self
+    {
+        if ($this->resources->contains($resource)) {
+            $this->resources->removeElement($resource);
+            $resource->removeProject($this);
+        }
+        return $this;
     }
 }

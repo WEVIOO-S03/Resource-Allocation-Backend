@@ -55,10 +55,40 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: UserProjectAccess::class, mappedBy: 'user', cascade: ['persist', 'remove'])]
     private Collection $projectAccess;
 
+    #[ORM\OneToMany(targetEntity: Resource::class, mappedBy: 'projectManager')]
+    private Collection $managedResources;
+
     public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
         $this->projectAccess = new ArrayCollection();
+        $this->managedResources = new ArrayCollection(); 
+    }
+
+    // Add these methods
+    public function getManagedResources(): Collection
+    {
+        return $this->managedResources;
+    }
+
+    public function addManagedResource(Resource $resource): self
+    {
+        if (!$this->managedResources->contains($resource)) {
+            $this->managedResources->add($resource);
+            $resource->setProjectManager($this);
+        }
+        return $this;
+    }
+
+    public function removeManagedResource(Resource $resource): self
+    {
+        if ($this->managedResources->removeElement($resource)) {
+            // Set the project manager to null if it's set to this user
+            if ($resource->getProjectManager() === $this) {
+                $resource->setProjectManager(null);
+            }
+        }
+        return $this;
     }
 
     public function getId(): ?int

@@ -71,6 +71,7 @@ class LoginAuthenticator extends AbstractAuthenticator
             'token' => $this->jwtManager->create($user),
             'user' => [
                 'id' => $user->getId(),
+                'firstName' => $user->getFirstName(),
                 'email' => $user->getEmail(),
                 'isActive' => $user->isActive(),
                 'roles' => $user->getRoles()
